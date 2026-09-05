@@ -1,34 +1,20 @@
-const express = require('express');
+const express = require("express");
 const app = express();
 
-// Middleware parsing body
+// Parsing JSON
 app.use(express.json());
 
-// Import fungsi requireAuth pakai kurung kurawal { }
-const { requireAuth } = require('./auth');
+// Import middleware auth
+const { requireAuth } = require("./auth");
 
-// Pasang middleware-nya
+// Pasang middleware (jika ingin dipasang secara global)
 app.use(requireAuth);
 
-// ... sisa kode server.js kamu ke bawah tetep samarequire("dotenv").config();
-const express = require("express");
-const cors = require("cors");
+// --- MASUKKAN ROUTE-ROUTE KAMU DI SINI ---
+// contoh: app.get('/...', ...);
 
-const authRoutes = require("./routes/auth");
-const productRoutes = require("./routes/products");
-const checkoutRoutes = require("./routes/checkout");
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-app.use("/api/auth", authRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/checkout", checkoutRoutes);
-
-app.get("/api/health", (req, res) => res.json({ ok: true }));
-
-const PORT = process.env.PORT || 3001;
+// Jalankan server
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Toko Berkah API jalan di port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
