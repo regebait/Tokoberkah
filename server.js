@@ -1,4 +1,16 @@
-require("dotenv").config();
+const express = require('express');
+const app = express();
+
+// Middleware parsing body
+app.use(express.json());
+
+// Import fungsi requireAuth pakai kurung kurawal { }
+const { requireAuth } = require('./auth');
+
+// Pasang middleware-nya
+app.use(requireAuth);
+
+// ... sisa kode server.js kamu ke bawah tetep samarequire("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 
