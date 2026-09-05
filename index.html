@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toko Berkah — Aplikasi Wirausaha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EFF3F1; --surface:#FFFFFF; --ink:#1B2B29; --ink-soft:#4C5B57;
+    --primary:#1F4B45; --primary-dark:#143330; --primary-soft:#E4EEEC;
+    --accent:#D98E3F; --accent-dark:#B9721F; --danger:#C1443B; --line:#DBE3DE;
+    --radius-s:8px; --radius-m:14px; --radius-l:22px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);color:var(--ink);}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select{font-family:inherit;padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--radius-s);font-size:14px;width:100%;}
+  .btn{border:none;border-radius:var(--radius-s);padding:11px 18px;font-weight:600;font-size:14px;}
+  .btn-primary{background:var(--primary);color:#fff;width:100%;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-accent{background:var(--accent);color:#fff;}
+  .btn-accent:hover{background:var(--accent-dark);}
+  .btn-ghost{background:#fff;border:1.5px solid var(--line);}
+  .err{background:#FBEAE8;color:var(--danger);border:1px solid #F0C7C2;padding:9px 12px;border-radius:var(--radius-s);font-size:13px;margin-bottom:12px;display:none;}
+  .err.show{display:block;}
+  .container{max-width:420px;margin:60px auto;background:var(--surface);padding:28px;border-radius:var(--radius-l);}
+  .wide{max-width:1100px;}
+  .tabs{display:flex;gap:4px;background:var(--bg);border-radius:999px;padding:4px;margin-bottom:22px;}
+  .tabs button{flex:1;border:none;background:transparent;padding:9px;border-radius:999px;font-weight:600;color:var(--ink-soft);}
+  .tabs button.active{background:#fff;color:var(--primary);}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;background:#fff;border-bottom:1px solid var(--line);}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;padding:20px 24px;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius-m);padding:14px;}
+  .card b{display:block;font-size:14.5px;margin-bottom:4px;}
+  .tag{display:inline-block;font-size:11px;color:var(--primary);background:var(--primary-soft);padding:2px 8px;border-radius:999px;margin-bottom:6px;}
+  .price{font-family:'IBM Plex Mono';font-weight:600;}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;z-index:50;}
+  .modal-bg.show{display:flex;}
+  .modal{background:#fff;border-radius:var(--radius-l);padding:24px;width:340px;}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;display:none;z-index:60;}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+<div id="toast"></div>
+
+<script>
+const API_BASE = window.location.hostname === "localhost"
+  ? "http://localhost:3001/api"
+  : "https://GANTI-DENGAN-URL-BACKEND-ANDA/api";
+
+let token = sessionStorage.getItem("token") || null;
+let currentUser = JSON.parse(sessionStorage.getItem("user") || "null");
+let cart = {};
+let products = [];
+let selectedPayment = null;
+let authMode = "buyer";
+
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.display = "block";
+  setTimeout(()=>t.style.display="none", 2500);
+}
+function rp(n){ return "Rp" + Number(n).toLocaleString("id-ID"); }
+
+async function api(path, method="GET", body=null, auth=false){
+  const headers = {"Content-Type":"application/json"};
+  if(auth && token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch(API_BASE + path, {
+    method, headers, body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || "Terjadi kesalahan.");
+  return data;
+}
+
+function setSession(t, u){
+  token = t; currentUser = u;
+  sessionStorage.setItem("token", t);
+  sessionStorage.setItem("user", JSON.stringify(u));
+}
+function clearSession(){
+  token = null; currentUser = null; cart = {};
+  sessionStorage.removeItem("token"); sessionStorage.removeItem("user");
+}
+
+function render(){
+  const app = document.getElementById("app");
+  if(!currentUser) app.innerHTML = renderAuth();
+  else app.innerHTML = renderHome();
+  bindEvents();
+}
+
+function renderAuth(){
+  return `
+  <div class="container">
+    <div class="tabs">
+      <button class="${authMode==='buyer'?'active':''}" onclick="authMode='buyer';render()">Pembeli</button>
+      <button class="${authMode==='seller'?'active':''}" onclick="authMode='seller';render()">Penjual</button>
+    </div>
+    <div class="err" id="authErr"></div>
+    ${authMode==='buyer' ? `
+      <div id="buyerLoginForm">
+        <h2>Masuk pembeli</h2>
+        <div class="field"><label>Username</label><input id="b-username"></div>
+        <div class="field"><label>Kata sandi</label><input type="password" id="b-password"></div>
+        <button class="btn btn-primary" onclick="doBuyerLogin()">Masuk</button>
+        <p style="text-align:center;margin-top:14px;font-size:13.5px">Belum punya akun? <a href="#" onclick="window.__showBuyerRegister();return false;">Daftar</a></p>
+      </div>
+    ` : `
+      <div>
+        <h2>Masuk penjual</h2>
+        <p style="font-size:12.5px;color:var(--ink-soft);background:var(--primary-soft);padding:9px;border-radius:8px">Akun penjual butuh persetujuan admin.</p>
+        <div class="field"><label>Username</label><input id="s-username"></div>
+        <div class="field"><label>Kata sandi</label><input type="password" id="s-password"></div>
+        <button class="btn btn-primary" onclick="doSellerLogin()">Masuk</button>
+        <p style="text-align:center;margin-top:14px;font-size:13.5px">Belum jadi penjual? <a href="#" onclick="window.__showSellerVerify();return false;">Ajukan verifikasi</a></p>
+      </div>
+    `}
+  </div>`;
+}
+
+function bindEvents(){
+  window.__showBuyerRegister = ()=>{
+    document.getElementById("app").innerHTML = `
+    <div class="container">
+      <div class="tabs"><button class="active">Pembeli</button><button onclick="authMode='seller';render()">Penjual</button></div>
+      <div class="err" id="authErr"></div>
+      <h2>Daftar pembeli</h2>
+      <div class="field"><label>Nama lengkap</label><input id="r-name"></div>
+      <div class="field"><label>Username</label><input id="r-username"></div>
+      <div class="field"><label>Kata sandi</label><input type="password" id="r-password"></div>
+      <button class="btn btn-primary" onclick="doBuyerRegister()">Daftar</button>
+      <p style="text-align:center;margin-top:14px;font-size:13.5px"><a href="#" onclick="render();return false;">Kembali</a></p>
+    </div>`;
+  };
+  window.__showSellerVerify = ()=>{
+    document.getElementById("app").innerHTML = `
+    <div class="container">
+      <div class="tabs"><button onclick="authMode='buyer';render()">Pembeli</button><button class="active">Penjual</button></div>
+      <div class="err" id="authErr"></div>
+      <h2>Verifikasi penjual</h2>
+      <div class="field"><label>Nama pemilik</label><input id="v-name"></div>
+      <div class="field"><label>Nama usaha</label><input id="v-business"></div>
+      <div class="field"><label>Nomor KTP/NIB</label><input id="v-id"></div>
+      <div class="field"><label>Nomor HP</label><input id="v-phone"></div>
+      <div class="field"><label>Username</label><input id="v-username"></div>
+      <div class="field"><label>Kata sandi</label><input type="password" id="v-password"></div>
+      <button class="btn btn-primary" onclick="doSellerVerify()">Ajukan</button>
+      <p style="text-align:center;margin-top:14px;font-size:13.5px"><a href="#" onclick="render();return false;">Kembali</a></p>
+    </div>`;
+  };
+}
+
+async function doBuyerLogin(){
+  const username = document.getElementById("b-username").value.trim();
+  const password = document.getElementById("b-password").value;
+  try{
+    const data = await api("/auth/buyer/login", "POST", { username, password });
+    setSession(data.token, data.user);
+    await loadProducts();
+    render();
+  }catch(e){ showAuthErr(e.message); }
+}
+async function doBuyerRegister(){
+  const name = document.getElementById("r-name").value.trim();
+  const username = document.getElementById("r-username").value.trim();
+  const password = document.getElementById("r-password").value;
+  try{
+    const data = await api("/auth/buyer/register", "POST", { name, username, password });
+    setSession(data.token, data.user);
+    await loadProducts();
+    render();
+  }catch(e){ showAuthErr(e.message); }
+}
+async function doSellerLogin(){
+  const username = document.getElementById("s-username").value.trim();
+  const password = document.getElementById("s-password").value;
+  try{
+    const data = await api("/auth/seller/login", "POST", { username, password });
+    setSession(data.token, data.user);
+    if(data.user.role === "admin"){ await renderAdmin(); }
+    else { await loadProducts(); render(); }
+  }catch(e){ showAuthErr(e.message); }
+}
+async function doSellerVerify(){
+  const name = document.getElementById("v-name").value.trim();
+  const businessName = document.getElementById("v-business").value.trim();
+  const idNumber = document.getElementById("v-id").value.trim();
+  const phone = document.getElementById("v-phone").value.trim();
+  const username = document.getElementById("v-username").value.trim();
+  const password = document.getElementById("v-password").value;
+  try{
+    await api("/auth/seller/verify", "POST", { name, businessName, idNumber, phone, username, password });
+    document.getElementById("app").innerHTML = `
+    <div class="container" style="text-align:center">
+      <h2>Permohonan terkirim</h2>
+      <p style="color:var(--ink-soft);font-size:14px">Menunggu verifikasi admin sebelum akun bisa dipakai untuk masuk.</p>
+      <button class="btn btn-primary" onclick="authMode='seller';render()">Kembali ke halaman masuk</button>
+    </div>`;
+  }catch(e){ showAuthErr(e.message); }
+}
+function showAuthErr(msg){
+  const el = document.getElementById("authErr");
+  if(el){ el.textContent = msg; el.classList.add("show"); }
+}
+
+async function renderAdmin(){
+  const data = await api("/auth/admin/applications", "GET", null, true);
+  const pending = data.applications.filter(a=>a.status==="pending");
+  document.getElementById("app").innerHTML = `
+  <div class="topbar"><b>Toko Berkah — Panel Admin</b><button class="btn btn-ghost" onclick="doLogout()">Keluar</button></div>
+  <div class="wide" style="margin:0 auto;padding:20px">
+    <h3>Permohonan menunggu verifikasi</h3>
+    ${pending.length===0 ? '<p style="color:var(--ink-soft)">Tidak ada permohonan baru.</p>' : pending.map(a=>`
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div><b>${a.business_name}</b><span style="font-size:12.5px;color:var(--ink-soft)">${a.name} · ${a.phone} · ${a.username}</span></div>
+        <div>
+          <button class="btn btn-accent" onclick="approveApp(${a.id})">Setujui</button>
+          <button class="btn btn-ghost" onclick="rejectApp(${a.id})">Tolak</button>
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+async function approveApp(id){
+  try{ await api(`/auth/admin/applications/${id}/approve`, "POST", null, true); await renderAdmin(); }
+  catch(e){ toast(e.message); }
+}
+async function rejectApp(id){
+  try{ await api(`/auth/admin/applications/${id}/reject`, "POST", null, true); await renderAdmin(); }
+  catch(e){ toast(e.message); }
+}
+
+function doLogout(){ clearSession(); authMode="buyer"; render(); }
+
+async function loadProducts(search="", jenis=""){
+  const params = new URLSearchParams();
+  if(search) params.set("search", search);
+  if(jenis && jenis!=="Semua") params.set("jenis", jenis);
+  const data = await api("/products?" + params.toString());
+  products = data.products;
+}
+
+function renderHome(){
+  const isSeller = currentUser.role === "seller";
+  const cartCount = Object.values(cart).reduce((a,b)=>a+b,0);
+  const cats = ["Semua", ...new Set(products.map(p=>p.jenis))];
+  return `
+  <div class="topbar">
+    <b>Toko Berkah</b>
+    <div style="display:flex;align-items:center;gap:12px">
+      <input id="searchBox" placeholder="Cari produk..." style="width:220px" oninput="onSearch(this.value)">
+      <span>Halo, ${currentUser.name.split(" ")[0]} ${isSeller?'<span style="background:var(--accent);color:#fff;padding:2px 8px;border-radius:999px;font-size:10.5px">PENJUAL</span>':''}</span>
+      <button class="btn btn-ghost" onclick="alert(cartSummary())">Keranjang (${cartCount})</button>
+      <button class="btn btn-ghost" onclick="doLogout()">Keluar</button>
+    </div>
+  </div>
+  <div style="padding:16px 24px 0;display:flex;gap:8px;flex-wrap:wrap">
+    ${cats.map(c=>`<button class="btn btn-ghost" onclick="onCategory('${c}')">${c}</button>`).join('')}
+    ${isSeller?'<button class="btn btn-accent" style="margin-left:auto" onclick="openProductModal()">+ Tambah Produk</button>':''}
+  </div>
+  <div class="grid">
+    ${products.map(p=>`
+      <div class="card">
+        <span class="tag">${p.jenis}</span>
+        <b>${p.name}</b>
+        <div class="price">${rp(p.harga)}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px">Stok: ${p.stok}</div>
+        ${isSeller ? `
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost" style="flex:1" onclick="openProductModal(${p.id})">Edit</button>
+            <button class="btn btn-ghost" style="flex:1;color:var(--danger)" onclick="deleteProduct(${p.id})">Hapus</button>
+          </div>
+        ` : `
+          <button class="btn btn-primary" ${p.stok<=0?'disabled':''} onclick="addToCart(${p.id})">${p.stok<=0?'Stok habis':'Tambah'}</button>
+        `}
+      </div>
+    `).join('')}
+  </div>
+  <div class="modal-bg" id="productModal"></div>
+  `;
+}
+
+let searchTimer;
+function onSearch(val){
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async()=>{ await loadProducts(val); render(); }, 300);
+}
+async function onCategory(cat){ await loadProducts("", cat); render(); }
+
+function cartSummary(){
+  const lines = Object.entries(cart).map(([id,qty])=>{
+    const p = products.find(x=>x.id==id);
+    return p ? `${p.name} x${qty}` : "";
+  });
+  return lines.length ? lines.join("\n") : "Keranjang masih kosong.";
+}
+function addToCart(id){
+  const p = products.find(x=>x.id===id);
+  const cur = cart[id] || 0;
+  if(cur >= p.stok){ toast("Stok tidak cukup."); return; }
+  cart[id] = cur + 1;
+  toast(p.name + " ditambahkan ke keranjang.");
+}
+
+function openProductModal(id){
+  const p = id ? products.find(x=>x.id===id) : { name:"", jenis:"", harga:"", stok:"", icon:"" };
+  document.getElementById("productModal").innerHTML = `
+  <div class="modal">
+    <h3>${id?'Edit':'Tambah'} produk</h3>
+    <div class="err" id="prodErr"></div>
+    <div class="field"><label>Nama produk</label><input id="p-name" value="${p.name}"></div>
+    <div class="field"><label>Jenis</label><input id="p-jenis" value="${p.jenis}"></div>
+    <div class="field"><label>Harga</label><input type="number" id="p-harga" value="${p.harga}"></div>
+    <div class="field"><label>Stok</label><input type="number" id="p-stok" value="${p.stok}"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeProductModal()">Batal</button>
+      <button class="btn btn-accent" style="flex:1" onclick="saveProduct(${id||'null'})">Simpan</button>
+    </div>
+  </div>`;
+  document.getElementById("productModal").classList.add("show");
+}
+function closeProductModal(){ document.getElementById("productModal").classList.remove("show"); }
+
+async function saveProduct(id){
+  const name = document.getElementById("p-name").value.trim();
+  const jenis = document.getElementById("p-jenis").value.trim();
+  const harga = parseInt(document.getElementById("p-harga").value, 10);
+  const stok = parseInt(document.getElementById("p-stok").value, 10);
+  const errEl = document.getElementById("prodErr");
+  if(!name || !jenis || isNaN(harga) || harga<0 || isNaN(stok) || stok<0){
+    errEl.textContent = "Lengkapi semua data dengan benar."; errEl.classList.add("show"); return;
+  }
+  try{
+    if(id) await api(`/products/${id}`, "PUT", { name, jenis, harga, stok }, true);
+    else await api("/products", "POST", { name, jenis, harga, stok }, true);
+    closeProductModal();
+    await loadProducts();
+    render();
+  }catch(e){ errEl.textContent = e.message; errEl.classList.add("show"); }
+}
+async function deleteProduct(id){
+  if(!confirm("Hapus produk ini?")) return;
+  try{
+    await api(`/products/${id}`, "DELETE", null, true);
+    await loadProducts();
+    render();
+  }catch(e){ toast(e.message); }
+}
+
+async function boot(){
+  if(currentUser && currentUser.role === "admin"){ await renderAdmin(); return; }
+  if(currentUser){ await loadProducts(); }
+  render();
+}
+boot();
+</script>
+</body>
+</html>
