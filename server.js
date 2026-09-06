@@ -3,14 +3,21 @@ const app = express();
 
 app.use(express.json());
 
-// Import fungsi requireAuth langsung dari folder middleware/
+// Import middleware
 const { requireAuth } = require('./middleware/auth');
 
-// Pasang middleware-nya
-app.use(requireAuth);
+// 1. Route tes biasa (Bisa diakses di browser tanpa token)
+app.get('/', (req, res) => {
+  res.send('API Toko Berkah Aktif!');
+});
 
-// Jalankan server
-const PORT = process.env.PORT || 3000;
+// 2. Route yang butuh login (Pasang requireAuth khusus di sini)
+app.get('/profile', requireAuth, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// Jalankan server di PORT dynamic dari Railway
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
