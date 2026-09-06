@@ -17,7 +17,8 @@ app.get('/profile', requireAuth, (req, res) => {
 });
 
 // Jalankan server di PORT dynamic dari Railway
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
