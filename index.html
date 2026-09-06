@@ -51,9 +51,10 @@
 <div id="toast"></div>
 
 <script>
+// URL Backend Railway kamu sudah terpasang secara otomatis di sini
 const API_BASE = window.location.hostname === "localhost"
   ? "http://localhost:3001/api"
-  : "https://GANTI-DENGAN-URL-BACKEND-ANDA/api";
+  : "https://tokoberkah-production.up.railway.app/api";
 
 let token = sessionStorage.getItem("token") || null;
 let currentUser = JSON.parse(sessionStorage.getItem("user") || "null");
@@ -244,7 +245,7 @@ async function loadProducts(search="", jenis=""){
   if(search) params.set("search", search);
   if(jenis && jenis!=="Semua") params.set("jenis", jenis);
   const data = await api("/products?" + params.toString());
-  products = data.products;
+  products = data.products || [];
 }
 
 function renderHome(){
@@ -256,7 +257,7 @@ function renderHome(){
     <b>Toko Berkah</b>
     <div style="display:flex;align-items:center;gap:12px">
       <input id="searchBox" placeholder="Cari produk..." style="width:220px" oninput="onSearch(this.value)">
-      <span>Halo, ${currentUser.name.split(" ")[0]} ${isSeller?'<span style="background:var(--accent);color:#fff;padding:2px 8px;border-radius:999px;font-size:10.5px">PENJUAL</span>':''}</span>
+      <span>Halo, ${currentUser.name ? currentUser.name.split(" ")[0] : 'Pengguna'} ${isSeller?'<span style="background:var(--accent);color:#fff;padding:2px 8px;border-radius:999px;font-size:10.5px">PENJUAL</span>':''}</span>
       <button class="btn btn-ghost" onclick="alert(cartSummary())">Keranjang (${cartCount})</button>
       <button class="btn btn-ghost" onclick="doLogout()">Keluar</button>
     </div>
